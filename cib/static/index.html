@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CIB Detector</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f0f0f0; --surface: #ffffff; --border: #d0d0d0; --border-light: #e8e8e8;
+  --text: #1a1a1a; --muted: #666; --faint: #999;
+  --accent: #2a5298; --accent-bg: #edf0f8;
+  --green: #1a6b2a; --green-bg: #eaf3ec; --green-border: #b0ccb5;
+  --red: #8b1a1a; --red-bg: #f8eaea; --red-border: #ccb0b0;
+  --yellow: #7a5800; --yellow-bg: #fdf6e3; --yellow-border: #ccc099;
+  --font: Georgia, 'Times New Roman', serif;
+  --mono: 'Courier New', Courier, monospace;
+}
+body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 11px; line-height: 1.5; }
+
+.shell { display: grid; grid-template-columns: 210px 1fr; grid-template-rows: 38px 1fr; min-height: 100vh; }
+.header { grid-column: 1/-1; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 12px; }
+.header-title { font-size: 11px; color: var(--muted); font-style: normal; }
+.header-title strong { color: var(--text); }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.server-label { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+
+.sidebar { background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; }
+.sidebar-section { padding: 10px 0; border-bottom: 1px solid var(--border-light); }
+.sidebar-label { font-size: 10px; font-family: var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); padding: 0 10px; margin-bottom: 3px; }
+.nav-btn { display: block; width: 100%; text-align: left; padding: 6px 10px; background: none; border: none; border-left: 2px solid transparent; cursor: pointer; font-family: var(--font); font-size: 11px; color: var(--muted); }
+.nav-btn:hover { background: var(--bg); color: var(--text); }
+.nav-btn.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-bg); }
+.cluster-item { padding: 4px 10px; font-size: 11px; font-family: var(--mono); color: var(--muted); display: flex; align-items: center; gap: 5px; cursor: pointer; border-left: 2px solid transparent; }
+.cluster-item:hover { background: var(--bg); }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--border); }
+.dot.high { background: var(--red); }
+.dot.medium { background: var(--yellow); }
+.dot.low { background: var(--green); }
+
+.main { background: var(--bg); padding: 16px; overflow-y: auto; }
+.panel { display: none; } .panel.active { display: block; }
+
+.card { background: var(--surface); border: 1px solid var(--border); margin-bottom: 12px; }
+.card-head { padding: 8px 12px; border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; }
+.card-title { font-size: 11px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.card-body { padding: 12px; }
+
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.row label { font-size: 11px; color: var(--muted); min-width: 80px; }
+input[type=text], input[type=number], input[type=file] {
+  font-family: var(--mono); font-size: 11px; padding: 4px 7px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); flex: 1;
+}
+input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+button { font-family: var(--font); font-size: 11px; padding: 4px 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+button:hover { background: var(--bg); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { opacity: 0.88; }
+button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th { text-align: left; font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); padding: 5px 8px; border-bottom: 1px solid var(--border); font-weight: normal; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--border-light); vertical-align: middle; font-family: var(--mono); font-size: 11px; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg); }
+
+.verdict { padding: 10px 12px; border: 1px solid; margin-bottom: 12px; display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.verdict.high   { border-color: var(--red-border); background: var(--red-bg); }
+.verdict.medium { border-color: var(--yellow-border); background: var(--yellow-bg); }
+.verdict.low    { border-color: var(--green-border); background: var(--green-bg); }
+.verdict-score { font-family: var(--mono); font-size: 26px; font-weight: bold; line-height: 1; }
+.verdict-label { font-size: 11px; font-weight: bold; margin-bottom: 2px; }
+.verdict-sub   { font-size: 11px; color: var(--muted); }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1px; background: var(--border-light); border: 1px solid var(--border); margin-bottom: 12px; }
+.stat { background: var(--surface); padding: 8px 10px; }
+.stat-label { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); margin-bottom: 2px; }
+.stat-val { font-size: 15px; font-family: var(--mono); }
+
+.bar-wrap { display: flex; align-items: center; gap: 7px; }
+.bar { height: 5px; background: var(--border-light); width: 80px; flex-shrink: 0; }
+.bar-fill { height: 100%; }
+.mono { font-family: var(--mono); }
+
+.tag { display: inline-block; font-size: 10px; font-family: var(--mono); padding: 1px 5px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); }
+.tag.g { border-color: var(--green-border); background: var(--green-bg); color: var(--green); }
+.tag.y { border-color: var(--yellow-border); background: var(--yellow-bg); color: var(--yellow); }
+.tag.r { border-color: var(--red-border); background: var(--red-bg); color: var(--red); }
+.tag.b { border-color: #99aad4; background: var(--accent-bg); color: var(--accent); }
+
+.log { font-family: var(--mono); font-size: 11px; background: #1c1c1c; color: #bbb; padding: 8px 10px; max-height: 140px; overflow-y: auto; line-height: 1.55; }
+.log .ok { color: #7ec87e; } .log .warn { color: #d4b84a; }
+.log .err { color: #d47a7a; } .log .info { color: #7ab4d4; }
+
+.empty { padding: 24px; text-align: center; color: var(--faint); font-size: 11px; }
+.loading { display: inline-block; width: 10px; height: 10px; border: 1.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.drop-zone {
+  border: 2px dashed var(--border); padding: 28px 16px; text-align: center;
+  cursor: pointer; transition: border-color .2s, background .2s;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-bg); }
+.drop-zone-text { font-size: 11px; color: var(--muted); }
+.drop-zone-sub { font-size: 11px; color: var(--faint); margin-top: 2px; }
+
+#graph-container { width: 100%; height: 400px; border: 1px solid var(--border); background: var(--surface); }
+#graph-container svg { width: 100%; height: 100%; }
+.node-label { font-family: var(--mono); font-size: 9px; fill: var(--muted); pointer-events: none; }
+
+hr { border: none; border-top: 1px solid var(--border-light); margin: 12px 0; }
+@media (max-width: 680px) { .two-col { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } .sidebar { display: none; } }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header class="header">
+  <div class="header-title"><strong>CIB Detector</strong> &nbsp;—&nbsp; coordinated inauthentic behavior analysis</div>
+  <div class="header-right">
+    <span class="server-label" id="status-label"></span>
+  </div>
+</header>
+
+<nav class="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-label">Navigation</div>
+    <button class="nav-btn active" onclick="nav('ingest')">Ingest</button>
+    <button class="nav-btn" onclick="nav('overview')">Overview</button>
+    <button class="nav-btn" onclick="nav('clusters')">Clusters</button>
+    <button class="nav-btn" onclick="nav('temporal')">Temporal pairs</button>
+    <button class="nav-btn" onclick="nav('content')">Content pairs</button>
+    <button class="nav-btn" onclick="nav('graph')">Network graph</button>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Clusters (<span id="sb-cluster-count">0</span>)</div>
+    <div id="sb-clusters"><div class="cluster-item" style="color:var(--faint)">none detected</div></div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Config</div>
+    <div style="padding:4px 10px">
+      <div class="row"><label>Window</label><input type="number" id="paramWindow" value="300" style="width:60px"></div>
+      <div class="row"><label>Threshold</label><input type="number" id="paramThreshold" value="0.15" step="0.01" style="width:60px"></div>
+      <div class="row"><label>Min posts</label><input type="number" id="paramMinPosts" value="5" style="width:60px"></div>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+
+  <!-- INGEST -->
+  <div class="panel active" id="panel-ingest">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Load dataset</span></div>
+      <div class="card-body">
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept=".csv,.json,.jsonl" style="display:none">
+          <div class="drop-zone-text"><strong>Drop file</strong> or click to upload</div>
+          <div class="drop-zone-sub">CSV, JSON, or JSONL — columns: account_id, timestamp, text</div>
+        </div>
+        <div id="fileName" style="font-family:var(--mono);font-size:11px;color:var(--green);margin-top:6px"></div>
+        <hr>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="primary" id="btnDetect" disabled onclick="doDetect()">Run detection</button>
+          <button onclick="doDemo()">Load IRA demo dataset</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Log</span></div>
+      <div class="log" id="logBox"><div class="info">Ready. Upload a dataset or load the IRA demo.</div></div>
+    </div>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="panel" id="panel-overview">
+    <div id="overview-content"><div class="empty">No analysis run yet.</div></div>
+  </div>
+
+  <!-- CLUSTERS -->
+  <div class="panel" id="panel-clusters">
+    <div id="clusters-content"><div class="empty">No analysis run yet.</div></div>
+  </div>
+
+  <!-- TEMPORAL -->
+  <div class="panel" id="panel-temporal">
+    <div id="temporal-content"><div class="empty">No analysis run yet.</div></div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="panel" id="panel-content">
+    <div id="content-content"><div class="empty">No analysis run yet.</div></div>
+  </div>
+
+  <!-- GRAPH -->
+  <div class="panel" id="panel-graph">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Coordination graph</span><span class="mono" style="font-size:11px;color:var(--faint)" id="graphInfo"></span></div>
+      <div style="padding:8px 12px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:10px">
+        <label style="font-size:11px;color:var(--muted);white-space:nowrap">Min edge weight</label>
+        <input type="range" id="graphSlider" min="0.05" max="0.80" step="0.01" value="0.20" style="flex:1">
+        <span id="graphSliderVal" style="font-family:var(--mono);font-size:11px;min-width:32px">0.20</span>
+      </div>
+      <div id="graph-container"></div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+let data = null;
+let selectedFile = null;
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) setFile(fileInput.files[0]); });
+
+function setFile(f) { selectedFile = f; document.getElementById('fileName').textContent = f.name; document.getElementById('btnDetect').disabled = false; lg('info', 'File loaded: ' + f.name); }
+
+function lg(cls, msg) {
+  const el = document.getElementById('logBox');
+  const d = document.createElement('div'); d.className = cls; d.textContent = msg;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+
+async function doDetect() {
+  if (!selectedFile) return;
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  fd.append('window', document.getElementById('paramWindow').value);
+  fd.append('threshold', document.getElementById('paramThreshold').value);
+  fd.append('min_posts', document.getElementById('paramMinPosts').value);
+  document.getElementById('btnDetect').disabled = true;
+  document.getElementById('status-label').innerHTML = '<span class="loading"></span>detecting...';
+  lg('info', 'Running detection...');
+  try {
+    const res = await fetch('/api/detect', { method: 'POST', body: fd });
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+    lg('ok', `Done in ${data.elapsed_seconds}s — ${data.clusters.length} cluster(s) detected`);
+    document.getElementById('status-label').textContent = `${data.accounts} accounts · ${data.clusters.length} clusters`;
+    render();
+  } catch (e) { lg('err', 'Error: ' + e.message); }
+  document.getElementById('btnDetect').disabled = false;
+}
+
+async function doDemo() {
+  const fd = new FormData();
+  document.getElementById('status-label').innerHTML = '<span class="loading"></span>loading IRA dataset...';
+  lg('info', 'Loading Internet Research Agency dataset (40 accounts, ~5400 tweets)...');
+  try {
+    const res = await fetch('/api/generate', { method: 'POST', body: fd });
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+    lg('ok', `Detection complete in ${data.elapsed_seconds}s — ${data.clusters.length} cluster(s) found across ${data.accounts} IRA accounts`);
+    if (data.ground_truth) {
+      const cats = {};
+      Object.values(data.ground_truth).forEach(c => cats[c] = (cats[c]||0)+1);
+      lg('info', 'Ground truth: ' + Object.entries(cats).map(([k,v])=>k+':'+v).join(', '));
+    }
+    document.getElementById('status-label').textContent = `${data.accounts} accounts · ${data.clusters.length} clusters`;
+    render();
+  } catch (e) { lg('err', 'Error: ' + e.message); }
+}
+
+function render() {
+  renderSidebar();
+  renderOverview();
+  renderClusters();
+  renderTemporal();
+  renderContent();
+  nav('overview');
+}
+
+function renderSidebar() {
+  document.getElementById('sb-cluster-count').textContent = data.clusters.length;
+  const el = document.getElementById('sb-clusters');
+  if (!data.clusters.length) { el.innerHTML = '<div class="cluster-item" style="color:var(--faint)">none detected</div>'; return; }
+  el.innerHTML = data.clusters.map(c => {
+    const lev = c.coordination_score > 1.0 ? 'high' : c.coordination_score > 0.5 ? 'medium' : 'low';
+    return `<div class="cluster-item" onclick="nav('clusters')"><span class="dot ${lev}"></span>Cluster ${c.cluster_id} (${c.size}) — ${c.coordination_score.toFixed(2)}</div>`;
+  }).join('');
+}
+
+function renderOverview() {
+  const high = data.clusters.filter(c => c.coordination_score > 1.0).length;
+  const flagged = new Set(data.clusters.flatMap(c => c.accounts)).size;
+  document.getElementById('overview-content').innerHTML = `
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-label">Accounts</div><div class="stat-val">${data.accounts}</div></div>
+      <div class="stat"><div class="stat-label">Posts</div><div class="stat-val">${data.posts.toLocaleString()}</div></div>
+      <div class="stat"><div class="stat-label">Clusters</div><div class="stat-val">${data.clusters.length}</div></div>
+      <div class="stat"><div class="stat-label">High-risk</div><div class="stat-val">${high}</div></div>
+      <div class="stat"><div class="stat-label">Flagged</div><div class="stat-val">${flagged}</div></div>
+      <div class="stat"><div class="stat-label">Edges</div><div class="stat-val">${data.graph.edges.length}</div></div>
+      <div class="stat"><div class="stat-label">Time</div><div class="stat-val">${data.elapsed_seconds}s</div></div>
+    </div>
+    ${data.clusters.map(c => {
+      const lev = c.coordination_score > 1.0 ? 'high' : c.coordination_score > 0.5 ? 'medium' : 'low';
+      const tagCls = lev === 'high' ? 'r' : lev === 'medium' ? 'y' : 'g';
+      return `<div class="verdict ${lev}">
+        <div><div class="verdict-score">${c.coordination_score.toFixed(3)}</div><div style="font-size:10px;color:var(--muted);font-family:var(--mono)">coord score</div></div>
+        <div>
+          <div class="verdict-label">Cluster ${c.cluster_id} &nbsp;<span class="tag ${tagCls}">${lev}</span></div>
+          <div class="verdict-sub">${c.size} accounts · density ${c.density.toFixed(2)} · mean weight ${c.mean_edge_weight.toFixed(3)}</div>
+          <div class="verdict-sub">temporal ${c.evidence.mean_temporal.toFixed(3)} · content ${c.evidence.mean_content.toFixed(3)}${c.evidence.mean_cascade !== undefined ? ' · cascade ' + c.evidence.mean_cascade.toFixed(3) : ''}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px;word-break:break-all">${c.accounts.join(', ')}</div>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+function renderClusters() {
+  if (!data.clusters.length) { document.getElementById('clusters-content').innerHTML = '<div class="empty">No clusters detected.</div>'; return; }
+  document.getElementById('clusters-content').innerHTML = data.clusters.map(c => {
+    const lev = c.coordination_score > 1.0 ? 'high' : c.coordination_score > 0.5 ? 'medium' : 'low';
+    return `<div class="card">
+      <div class="card-head"><span class="card-title">Cluster ${c.cluster_id}</span><span class="tag ${lev==='high'?'r':lev==='medium'?'y':'g'}">${lev} — ${c.coordination_score.toFixed(3)}</span></div>
+      <div class="card-body">
+        <div class="stats-grid" style="margin-bottom:10px">
+          <div class="stat"><div class="stat-label">Accounts</div><div class="stat-val">${c.size}</div></div>
+          <div class="stat"><div class="stat-label">Density</div><div class="stat-val">${c.density.toFixed(2)}</div></div>
+          <div class="stat"><div class="stat-label">Edge weight</div><div class="stat-val">${c.mean_edge_weight.toFixed(3)}</div></div>
+          <div class="stat"><div class="stat-label">Temporal</div><div class="stat-val">${c.evidence.mean_temporal.toFixed(3)}</div></div>
+          <div class="stat"><div class="stat-label">Content</div><div class="stat-val">${c.evidence.mean_content.toFixed(3)}</div></div>
+          <div class="stat"><div class="stat-label">Edges</div><div class="stat-val">${c.evidence.internal_edges}/${c.evidence.max_possible_edges}</div></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;word-break:break-all">${c.accounts.join(', ')}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderPairTable(pairs, cols) {
+  if (!pairs || !pairs.length) return '<div class="empty">No significant pairs.</div>';
+  const names = { copost_score:'copost', copost_pvalue:'p-value', shift_correlation:'shift', burst_correlation:'burst',
+    url_score:'url', semantic_similarity:'semantic', narrative_convergence:'narrative', text_similarity:'text',
+    hashtag_overlap:'hashtag', amplification:'amp', combined:'total',
+    copypasta_count:'copypasta', rewording_count:'rewording', translation_count:'translation' };
+  const intCols = new Set(['copypasta_count','rewording_count','translation_count']);
+  let html = '<table><thead><tr><th>Account A</th><th>Account B</th>';
+  cols.forEach(c => html += `<th>${names[c]||c}</th>`);
+  html += '</tr></thead><tbody>';
+  pairs.slice(0, 25).forEach(p => {
+    html += `<tr><td>${p.account_a}</td><td>${p.account_b}</td>`;
+    cols.forEach(c => {
+      const v = p[c] || 0;
+      if (c === 'copost_pvalue') {
+        const tcls = v < 0.001 ? 'r' : v < 0.05 ? 'y' : 'g';
+        html += `<td><span class="tag ${tcls}">${v.toExponential(1)}</span></td>`;
+      } else if (intCols.has(c)) {
+        const tcls = v > 0 ? (v >= 5 ? 'r' : 'y') : '';
+        html += `<td>${v > 0 ? '<span class="tag '+tcls+'">'+v+'</span>' : '<span style="color:var(--faint)">0</span>'}</td>`;
+      } else {
+        const pct = Math.round(v * 80);
+        const col = v > 0.7 ? 'var(--red)' : v > 0.4 ? 'var(--yellow)' : 'var(--accent)';
+        html += `<td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div><span>${v.toFixed(3)}</span></div></td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderTemporal() {
+  document.getElementById('temporal-content').innerHTML = `<div class="card">
+    <div class="card-head"><span class="card-title">Top temporal pairs</span><span class="mono" style="font-size:11px;color:var(--faint)">${data.top_temporal_pairs.length} pairs</span></div>
+    <div class="card-body" style="overflow-x:auto">${renderPairTable(data.top_temporal_pairs,
+      ['copost_score','copost_pvalue','shift_correlation','burst_correlation','combined'])}</div>
+  </div>`;
+}
+
+function renderContent() {
+  const first = data.top_content_pairs?.[0];
+  const hasD3lta = first && (first.copypasta_count > 0 || first.rewording_count > 0 || first.translation_count > 0);
+  const cols = hasD3lta
+    ? ['semantic_similarity','copypasta_count','rewording_count','translation_count','narrative_convergence','url_score','hashtag_overlap','combined']
+    : first?.semantic_similarity !== undefined
+      ? ['semantic_similarity','narrative_convergence','url_score','hashtag_overlap','combined']
+      : ['text_similarity','url_score','hashtag_overlap','combined'];
+  const label = hasD3lta ? 'Top content pairs (D3lta)' : 'Top content pairs';
+  document.getElementById('content-content').innerHTML = `<div class="card">
+    <div class="card-head"><span class="card-title">${label}</span><span class="mono" style="font-size:11px;color:var(--faint)">${data.top_content_pairs.length} pairs</span></div>
+    <div class="card-body" style="overflow-x:auto">${renderPairTable(data.top_content_pairs, cols)}</div>
+  </div>`;
+}
+
+// Graph
+const CLUSTER_COLORS = ['#2a5298','#8b1a1a','#1a6b2a','#7a5800','#6b2a6b','#2a6b6b','#5a2a1a','#1a4a2a','#4a1a5a','#6b5a1a'];
+
+function renderGraph() {
+  const container = document.getElementById('graph-container');
+  container.innerHTML = '';
+  if (!data || !data.graph.nodes.length) { container.innerHTML = '<div class="empty" style="padding-top:180px">No graph edges above threshold.</div>'; return; }
+
+  const slider = document.getElementById('graphSlider');
+  const sliderVal = document.getElementById('graphSliderVal');
+  const cutoff = parseFloat(slider.value);
+  sliderVal.textContent = cutoff.toFixed(2);
+
+  const edges = data.graph.edges.filter(e => e.weight >= cutoff);
+  const connectedIds = new Set();
+  edges.forEach(e => { connectedIds.add(e.source.id || e.source); connectedIds.add(e.target.id || e.target); });
+  const nodes = data.graph.nodes.filter(n => connectedIds.has(n.id));
+
+  if (!nodes.length) { container.innerHTML = '<div class="empty" style="padding-top:180px">No edges above ' + cutoff.toFixed(2) + '. Lower the slider.</div>'; return; }
+
+  const edgeCopy = edges.map(e => ({...e, source: e.source.id || e.source, target: e.target.id || e.target}));
+  const nodeCopy = nodes.map(n => ({...n}));
+
+  const degreeMap = {};
+  nodeCopy.forEach(n => degreeMap[n.id] = 0);
+  edgeCopy.forEach(e => { degreeMap[e.source] = (degreeMap[e.source]||0)+1; degreeMap[e.target] = (degreeMap[e.target]||0)+1; });
+  nodeCopy.forEach(n => n._deg = degreeMap[n.id] || 0);
+
+  const W = container.clientWidth, H = container.clientHeight || 400;
+  document.getElementById('graphInfo').textContent = `${nodeCopy.length} nodes · ${edgeCopy.length} edges`;
+
+  const svg = d3.select(container).append('svg').attr('viewBox', `0 0 ${W} ${H}`);
+  const g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.3, 5]).on('zoom', e => g.attr('transform', e.transform)));
+
+  const sim = d3.forceSimulation(nodeCopy)
+    .force('link', d3.forceLink(edgeCopy).id(d => d.id).distance(d => 90/(d.weight+0.1)).strength(d => d.weight*0.8))
+    .force('charge', d3.forceManyBody().strength(-160))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide(22));
+
+  const link = g.append('g').selectAll('line').data(edgeCopy).join('line')
+    .attr('stroke', '#bbb').attr('stroke-width', d => 0.5+d.weight*3.5).attr('stroke-opacity', d => 0.2+d.weight*0.6);
+
+  const node = g.append('g').selectAll('circle').data(nodeCopy).join('circle')
+    .attr('r', d => 4+Math.sqrt(d._deg)*2.5)
+    .attr('fill', d => d.cluster >= 0 ? CLUSTER_COLORS[d.cluster%CLUSTER_COLORS.length] : '#999')
+    .attr('stroke', '#fff').attr('stroke-width', 1.5)
+    .call(d3.drag()
+      .on('start', (e,d) => { if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end', (e,d) => { if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+  const label = g.append('g').selectAll('text').data(nodeCopy).join('text')
+    .attr('class','node-label')
+    .attr('dy', d => -(8+Math.sqrt(d._deg)*2.5))
+    .attr('text-anchor','middle')
+    .text(d => d._deg >= 2 ? d.id : '')
+    .style('opacity', d => d._deg >= 3 ? 1 : 0.5);
+
+  node.append('title').text(d=>`${d.id}\nCluster: ${d.cluster>=0?d.cluster:'none'}\nConnections: ${d._deg}`);
+
+  sim.on('tick', () => {
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('cx',d=>d.x).attr('cy',d=>d.y);
+    label.attr('x',d=>d.x).attr('y',d=>d.y);
+  });
+}
+
+document.getElementById('graphSlider').addEventListener('input', function() {
+  document.getElementById('graphSliderVal').textContent = parseFloat(this.value).toFixed(2);
+  renderGraph();
+});
+
+// Navigation
+const NAV_LABELS = { ingest:'Ingest', overview:'Overview', clusters:'Clusters', temporal:'Temporal pairs', content:'Content pairs', graph:'Network graph' };
+function nav(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.textContent===NAV_LABELS[name]));
+  if (name === 'graph' && data) setTimeout(renderGraph, 60);
+}
+</script>
+</body>
+</html>

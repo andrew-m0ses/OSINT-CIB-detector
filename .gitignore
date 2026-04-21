@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.env
+*.csv
+*.json
+!data/examples/*.csv
+!data/examples/*.json
+.venv/
+venv/
+venv/
+use_model_kaggle/
+lid.176.ftz
