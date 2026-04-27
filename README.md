@@ -20,7 +20,7 @@ Five signal layers are combined into a weighted coordination graph:
 temporal coordination
 - co-posting with statistical significance (Poisson test with p-values)
 - shift correlation: matching active/inactive hourly cycles (detects shift-work patterns)
-- burst synchronization: correlated daily activity spikes (a fantastic paper for reference: https://www.nature.com/articles/s41467-025-64785-1)
+- burst synchronization: correlated daily activity spikes (a fantastic paper on the efficacy of using burstiness for identity matching: https://www.nature.com/articles/s41467-025-64785-1)
 
 content coordination (augmented by VIGINUM's D3lta and sentence-transformers)
 - copypasta detection: near-exact duplicate posts across accounts
