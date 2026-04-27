@@ -22,7 +22,7 @@ temporal coordination
 - shift correlation: matching active/inactive hourly cycles (detects shift-work patterns)
 - burst synchronization: correlated daily activity spikes
 
-content coordination (VIGINUM's D3lta and sentence-transformers)
+content coordination (augmented by VIGINUM's D3lta and sentence-transformers)
 - copypasta detection: near-exact duplicate posts across accounts
 - rewording detection: same meaning, different phrasing
 - cross-language translation: same content posted in different languages
